@@ -1,0 +1,13 @@
+[Unit]
+Description=Onewire MQTT Gateway
+Documentation=https://github.com/westenberg/onewire-mqtt-gateway
+After=network.target
+
+[Service]
+Type=idle
+WorkingDirectory=/home/user/onewire-mqtt-gateway
+User=user
+ExecStart=/home/user/onewire-mqtt-gateway/gateway.py
+
+[Install]
+WantedBy=multi-user.target

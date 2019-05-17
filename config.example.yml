@@ -1,0 +1,15 @@
+broker: 127.0.0.1
+clientname: onewire-mqqt-gateway
+auth:
+port: 1883
+pub_topic: onewire
+devices:
+- name: Temperature sensor
+  id: 28-1234567890ab
+  icon: mdi:thermometer
+  device_class: temperature
+  unit_of_measurement: °C
+update_interval: 60
+autodiscovery_prefix: homeassistant
+enable_autodiscovery: true
+base_dir: /sys/bus/w1/devices/
