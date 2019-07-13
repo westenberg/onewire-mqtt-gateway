@@ -1,6 +1,7 @@
 broker: 127.0.0.1
 clientname: onewire-mqqt-gateway
-auth:
+username:
+password:
 port: 1883
 pub_topic: onewire
 devices:

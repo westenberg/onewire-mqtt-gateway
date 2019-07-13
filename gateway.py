@@ -23,12 +23,17 @@ def on_connect(client, userdata, flags, rc):
     if rc == 0:
         print('Connected to broker')
         connected = True
-        subscribe(client)
+        subscribe()
         hass_autoconf()
         setInitialPresence()
     else:
         connected = False
         logging.warning('Connection failed')
+
+
+def on_disconnect(client, userdata,rc=0):
+    logging.debug("DisConnected result code "+str(rc))
+    client.loop_stop()
 
 
 def on_message(client, userdata, msg):
@@ -43,12 +48,12 @@ def on_message(client, userdata, msg):
         for device in message:
             if msg.topic == cfg['pub_topic'] + '/enable' and device in disabled:
                 disabled.remove(device)
-                messages.append({'topic': cfg['pub_topic'] + '/' + device + '/presence', 'payload': 'online'})
+                messages.append({'topic': cfg['pub_topic'] + '/' + device + '/presence', 'payload': 'online', 'retain': True})
             elif msg.topic == cfg['pub_topic'] + '/disable' and device not in disabled:
                 disabled.append(device)
                 cache.pop(device)
-                messages.append({'topic': cfg['pub_topic'] + '/' + device + '/presence', 'payload': 'offline'})
-                messages.append({'topic': cfg['pub_topic'] + '/' + device + '/state', 'payload': ''})
+                messages.append({'topic': cfg['pub_topic'] + '/' + device + '/presence', 'payload': 'offline', 'retain': True})
+                messages.append({'topic': cfg['pub_topic'] + '/' + device + '/state', 'payload': '', 'retain': True})
 
     print('Currently disabled devices: ' + str(disabled))
     sendMessages(messages)
@@ -76,16 +81,21 @@ def read_temp(deviceid):
 getDeviceKey = lambda name: stringcase.snakecase(name.lower())
 
 
-def subscribe(client):
+def subscribe():
+    global client
     print('Subscribing on enable/disable topics')
     client.subscribe(cfg['pub_topic'] + '/disable')
     client.subscribe(cfg['pub_topic'] + '/enable')
 
 
 def sendMessages(messages):
+    global client
+
     if len(messages) > 0:
         print('Sending messages: ' + str(messages))
-        mqttPublish.multiple(messages, hostname=cfg['broker'], port=cfg['port'], auth=cfg['auth'])
+
+        for message in messages:
+            client.publish(message['topic'], payload=message['payload'], qos=0, retain=message['retain'])
 
 
 def setInitialPresence():
@@ -95,6 +105,14 @@ def setInitialPresence():
         messages.append({'topic': cfg['pub_topic'] + '/' + getDeviceKey(device['name']) + '/presence', 'payload': 'online'})
 
     sendMessages(messages)
+
+
+def getUpdateInterval():
+    global connected
+    if connected:
+        return cfg['update_interval']
+
+    return 5
 
 
 def hass_autoconf():
@@ -132,7 +150,7 @@ def update():
 
             if temp is not None and ((devicekey in cache and temp != cache[devicekey]) or (devicekey in cache) == False):
                 print('publishing ' + (devicekey + ': ' + temp))
-                messages.append({'topic': cfg['pub_topic'] + '/' + devicekey + '/state', 'payload': temp})
+                messages.append({'topic': cfg['pub_topic'] + '/' + devicekey + '/state', 'payload': temp, 'retain': False})
 
             cache[devicekey] = temp
 
@@ -141,21 +159,24 @@ def update():
 
 print('Started onewire-mqtt-gateway')
 
-client = mqttClient.Client(cfg['clientname'])
+client = mqttClient.Client(client_id=cfg['clientname'], clean_session=False)
+
+if cfg['username'] and  cfg['password']:
+    client.username_pw_set(cfg['username'], cfg['password'])
+
 client.on_connect = on_connect
+client.on_disconnect = on_disconnect
 client.on_message = on_message
-client.connect(cfg['broker'], port=cfg['port'])
+client.connect(cfg['broker'], cfg['port'])
 client.loop_start()
 
 try:
-    while connected != True:
-        print('Waiting for connection')
-        time.sleep(1)
-
     while True:
-        update()
-        time.sleep(cfg['update_interval'])
+        if connected:
+            update()
+        else:
+            print('Waiting for connection')
+        time.sleep(getUpdateInterval())
 except KeyboardInterrupt:
     print('exiting onewire-mqtt-gateway...')
     client.disconnect()
-    client.loop_stop()
